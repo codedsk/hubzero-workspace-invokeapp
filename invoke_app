@@ -1,0 +1,1323 @@
+#!/bin/bash
+#
+# @package      hubzero-invokeapp
+# @file         invoke_app
+# @author       Derrick Kearney <dsk@purdue.edu>
+# @copyright    Copyright (c) 2010-2015 HUBzero Foundation, LLC.
+# @license      http://opensource.org/licenses/MIT MIT
+#
+# Copyright (c) 2010-2015 HUBzero Foundation, LLC.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+# HUBzero is a registered trademark of HUBzero Foundation, LLC.
+
+# Programs invoke depends upon
+
+pixelflip="/usr/bin/pixelflip"
+icewm="/usr/bin/icewm-hubzero"
+icewm_captive="/usr/bin/icewm-captive"
+ratpoison="/usr/bin/ratpoison-captive"
+submit="/usr/bin/submit"
+toolparams="/usr/bin/toolparams"
+
+exec_vars="pixelflip icewm icewm_captive ratpoison submit toolparams"
+
+source /etc/environ.sh
+
+#
+# Options (detailed description follows):
+#
+#     -A tool arguments
+#     -c execute command in background
+#     -C command to execute for starting the tool
+#     -d working directory
+#     -e environment variable (${VERSION} substituted with $TOOL_VERSION)
+#     -f No FULLSCREEN
+#     -S No submit
+#     -n nanowhim version
+#     -p add to path          (${VERSION} substituted with $TOOL_VERSION)
+#     -r rappture version
+#     -t tool name
+#     -T tool root directory
+#     -u use envionment packages
+#     -w specify alternate window manager
+#
+#
+# Deprecated Options:
+#
+#     -a <aboutFile>
+#     -l <runXml> [,<runXml>,...]
+#     -q <pbsQueue>
+#     -s
+#
+#
+# Detailed description of the options:
+#
+#  -A  Pass the provided enquoted arguments onto the tool. Example usage:
+#      -A "-q blah1 -w blah2"
+#      The options -q and -w are not parsed by invoke, but are passed on to
+#      the tool.
+#
+#  -c  Commands to run in the background before the tool launches.
+#      Example usage: -c "echo hi" -c "filexfer"
+#
+#  -C  Command to execute for starting tool. Tool's command line arguments
+#      can be included in this option, or can be placed in the -A option.
+#      Example usage: -C /apps/rappture/bin/simsim
+#      Example usage: -C "/apps/rappture/bin/simsim -tool driver.xml -values random"
+#      Example usage: -C /apps/rappture/bin/simsim -A "-tool driver.xml -values random"
+#
+#  -d  Change to this working directory. By default change to session directory.
+#
+#  -e  Set an environment variable. Example usage:
+#      -e LD_LIBRARY_PATH=@tool/../${VERSION}/lib:${LD_LIBRARY_PATH}
+#      Within the value part of this option's argument, the text ${VERSION}
+#      is automatically substituted with the value of the variable
+#      ${TOOL_VERSION}. Similarly, the text @tool is substituted with
+#      the value of ${TOOLDIR}. By setting the environment variable,
+#      you are overwritting its previous value.
+#
+#  -f  No full screen - disable FULLSCREEN environment variable,
+#      used by Rappture, to expand the window to the full available size of
+#      the screen.
+#
+#  -n  Sets ${nanowhim_version} which dictates which version of nanowhim is used.
+#      If left blank the version will default to current
+#
+#  -p  Prepend to the PATH environment variable. Example usage:
+#      -p @tool/../${VERSION}/bin. Within the value part of this option's
+#      argument, the text ${VERSION} is automatically substituted with the
+#      value of the variable ${TOOL_VERSION}. Similarly, the text @tool is
+#      substituted with the value of ${TOOLDIR}. By setting this option
+#      the PATH environment variable is adjusted, but not overwritten.
+#
+#  -r  Sets ${rappture_version} which dictates which version of rappture is used.
+#      If left blank the version will default to the special keyword 'system',
+#      which represents whichever version is pointed to by the default rappture
+#      environment in 'use'. A 'use -e -r rappture' will be performed to figure
+#      out where rappture is installed.
+#      If set to the special keyword 'none', searching for rappture executables
+#      (rappture, simsim, about) will be skipped and use of these executables
+#      will be disabled.
+#      This flag works well on hubs where multiple versions of rappture are
+#      installed. Users can specify their own version of Rappture to use by
+#      updating the PATH environment variable to include the directory where
+#      the 'rappture' executable is installed.
+#      Example usages:
+#      -r dev                              # find rappture in this subdirectory
+#      -r tag_1.3.5-4755-1811              # find rappture in this subdirectory
+#      -e PATH=${PATH}:/opt/rappture/bin   # adjust path for custom rappture
+#      -r none                             # disable searching for rappture
+#
+#  -S  Disable submit client and run job locally. This flag takes no arguments
+#      and is used for debugging. It disables the use of submit client from
+#      the -C command that will be executed. The default behavior, when the
+#      flag is not given, is to run the command through the submit client
+#      unless the command is "rappture", "simsim", "getrappturexml", or
+#      "nanowhim", none of which are run through the submit client. Setting
+#      the flag on the command line will add your command to the list of
+#      commands that do no run with the submit client.
+#
+#  -t  Sets ${toolname} which is used while setting up tool paths for TOOLDIR
+#      and TOOLXML. ${toolname} is the short name (or project name) of the
+#      tool. It is the same as the name used in the source code repository.
+#      With respect to the tool contribution process, it is the "toolname"
+#      in the path /apps/toolname/version/rappture/tool.xml. Setting this
+#      option will change the paths searched while trying to locate tool.xml
+#      and the bin directory.
+#
+#  -T  Tool root directory. This is the directory holding a checked out version
+#      of the code from the source code repository. It typically has the src,
+#      bin, middleware, rappture, docs, data, and examples directories
+#      underneath it. With respect to the tool contribution process, it is the
+#      "/apps/toolname/version" in the path
+#      /apps/toolname/version/rappture/tool.xml. Setting this option will
+#      change the paths searched while trying to locate tool.xml and the bin
+#      directory. Typically when testing this option is used to specify
+#      where the tool directory is. In this case, its the present working
+#      directory:  -T $PWD
+#
+#  -u  Set use scripts to invoke before running the tool. Example usage:
+#      -u octave-3.2.4 -u petsc-3.1-real-gnu
+#      These would setup octave-3.2.4 and petsc-3.1 in the environment that
+#      your tool would launch in.
+#
+#  -w  Set the window manager. The default value is to use the ratpoison window
+#      manager if it exists. If ratpoison is not installed on the system, look
+#      for the icewm captive window manager setup. Use this flag to choose an
+#      alternative window manager.
+#
+#
+# Deprecated Options (that still work for compatibility):
+#
+#  -a pass html file to about command
+#     replaced with: -c "about <path_to_html_file>"
+#     the 'about' executable is found in the rappture distribution
+#
+#  -l Pass (comma separated) run.xml files to rappture for it to load
+#     replaced with: -A "-load file1,file2,file3"
+#
+#  -s Execute simsim rather than rappture
+#     replaced with: -C simsim
+#     the 'simsim' executable is found in the rappture distribution
+#
+#  -q  pbs queue stuff, this flag does nothing
+#      not replaced
+#
+
+########################################################################
+#
+# echoerr ()
+#
+# echo text to standard error
+#
+########################################################################
+
+echoerr ()
+{
+    echo "$@" 1>&2;
+}
+
+########################################################################
+#
+# setup_base_dir (component)
+#
+# find the directory holding the different versions of "component".
+# set this directory as the value of ${component}_base variable.
+#
+########################################################################
+
+setup_base_dir ()
+{
+    local dist
+    local os_version
+    local dist_version
+    local share_base
+    local share_arch
+    local arch
+    local msg
+
+
+    if [[ "$1" == "" ]]; then
+        msg="while in setup_base_dir: missing component argument"
+        echoerr ${msg}
+        xmessage -center ${msg}
+        exit 1
+    fi
+
+    # determine Debian OS version, 5 - lenny, 6 - squeeze, 7 - wheezy
+    dist=debian
+    os_version=$(grep Linux /etc/issue | sed -e "s/.*Linux //" -e "s/\.[0-9]*//" -e "s/ .*//")
+    dist_version=${dist}${os_version}
+
+    # setup the name of the share directory where external software
+    # should be installed.
+    # share_base is for bit ambiguous software (probably scripts)
+    # share_arch is for bit specific software (32-bit vs 64-bit compiled stuff)
+    share_base="share"
+    share_arch=""
+    arch=$(uname -m)
+    if [[ "${arch}" == "x86_64" ]] ; then
+        # setup for 64-bit share envionments
+        share_arch="share64"
+    elif [[ "${arch}" == "x86" ]] ; then
+        # setup for 32-bit share envionments
+        share_arch="share32"
+    elif [[ "${arch}" =~ i[3-6]86 ]] ; then
+        # nanohub lenny containers match this
+        # setup for 32-bit share envionments
+        share_arch="share32"
+    else
+        echoerr "while in setup_base_dir for ${1}:"
+        echoerr "unsupported architecture: ${arch}"
+        echoerr "setting share_arch=\"\""
+        echoerr "this could affect setting ${1}_base"
+        share_arch=""
+    fi
+
+    if   [[ -d /apps/${share_arch}/${dist_version}/${1} ]] ; then
+        eval ${1}_base="/apps/${share_arch}/${dist_version}/${1}"
+    elif   [[ -d /apps/${share_arch}/${1} ]] ; then
+        eval ${1}_base="/apps/${share_arch}/${1}"
+    elif [[ -d /apps/${share_base}/${dist_version}/${1} ]] ; then
+        eval ${1}_base="/apps/${share_base}/${dist_version}/${1}"
+    elif [[ -d /apps/${share_base}/${1} ]] ; then
+        eval ${1}_base="/apps/${share_base}/${1}"
+    elif [[ -d /apps/${1} ]] ; then
+        eval ${1}_base="/apps/${1}"
+    else
+        msg="while in setup_base_dir: could not set ${1}_base"
+        echoerr ${msg}
+        xmessage -center ${msg}
+        exit 1
+    fi
+}
+
+########################################################################
+#
+# check_dependencies ()
+#
+# check that the programs invoke_app depends on are installed.
+#
+########################################################################
+
+check_dependencies ()
+{
+    local p
+    local execv
+
+    for execv in ${exec_vars} ; do
+        p=`eval echo '$'${execv}`
+        if [[ ! -x "${p}" ]] ; then
+            echoerr "cannot find the executable for ${execv}: ${p}"
+            eval ${execv}=""
+        fi
+    done
+}
+
+########################################################################
+#
+# has_template_variables ()
+#
+# does the provided command have template variables in it?
+# returns 0 for True, any thing else is False
+#
+########################################################################
+
+has_template_variables()
+{
+
+    # template variables take on the form @@type(name)
+    # where type is a string of alphabetical characters,
+    # and name is a string of any characters other than
+    # a closing paren.
+    if [[ "$@" =~ @@[a-zA-Z]+\([^\)]+\) ]] ; then
+        # command does have template variables
+        return 0;
+    else
+        # command does not have template variables
+        return 1;
+    fi
+}
+
+########################################################################
+#
+# parse_tool_commands ()
+#
+# look through the -C options to see if we need to call toolparams
+# construct the tool command and submit command we will use to launch
+# the tool. add any extra tool arguments needed for rappture, simsim,
+# and nanowhim calls.
+#
+# this procedure sets the ${toolcmd} and ${submit} variables
+# it also changes the ${wm} variable if running nanowhim
+#
+########################################################################
+
+parse_tool_commands()
+{
+    # check the number of -C commands provided
+    toolcmd=""
+    if  [ "${nToolCommands}" -eq "0" ] ; then
+        # no -C options were provided,
+        # default to running rappture
+        toolcmds[$nToolCommands]="rappture"
+        let nToolCommands++
+        toolcmd="rappture"
+    elif [ "${nToolCommands}" -eq "1" ] ; then
+        # one -C option was provided
+        # check for template variables
+        if has_template_variables ${toolcmds[0]} ; then
+            # there are template variables in the command
+            # send command to toolparams for evaluation
+            toolcmd="${toolparams} '${toolcmds[0]}'"
+        else
+            # no template variables
+            # make this our toolcmd
+            toolcmd=${toolcmds[0]}
+        fi
+    elif [ "${nToolCommands}" -gt "1" ] ; then
+        # multiple -C flags were provided.
+        # combine them into one string, so we can hand them
+        # off to the toolparams program for parsing.
+        local tptemplates=""
+        local tpdefault=""
+        local command
+        for command in "${toolcmds[@]}" ; do
+            echoerr "parsed toolparams command \"${command}\""
+            # FIXME: look for "@@" template variables to tell
+            #        if this is a template or a default.
+
+            if has_template_variables ${command} ; then
+                if [[ "${tptemplates}" == "" ]] ; then
+                    tptemplates="'${command}'"
+                else
+                    tptemplates="${tptemplates} -or '${command}'"
+                fi
+            else
+                tpdefault="-default '${command}'"
+            fi
+        done
+
+        # build the tool command
+        # if we were only given non-template commands,
+        # don't use toolparams to lauch the command.
+        # launch the last command and ignore all previous commands
+        if [[ "${tptemplates}" == "" ]] ; then
+            # no template commands, launch the last command
+            toolcmd="${command}"
+        else
+            # has template commands, let toolparams launch the command
+            toolcmd="${toolparams} ${tptemplates} ${tpdefault}"
+        fi
+    fi
+
+    # settings for specific tool commands like rappture and simsim
+
+    local nanowhim=""
+
+    if   [[ "${toolcmd}" == "rappture" ]] ; then
+        # rappture does not use submit
+        submit=""
+        setup_toolxml
+        toolcmd="${RAPPTURE_PATH}/bin/rappture"
+        toolargs="-tool ${TOOLXML} ${loadfiles} ${toolargs}"
+    elif [[ "${toolcmd}" == "simsim" ]] ; then
+        # simsim does not use submit
+        submit=""
+        toolcmd="${RAPPTURE_PATH}/bin/simsim"
+    elif [[ "${toolcmd}" == "getrappturexml" ]] ; then
+        # getrappturexml does not use submit
+        submit=""
+        setup_toolxml
+        echo "RAPPTURE_XML="${TOOLXML}
+        exit 0
+    elif [[ "${toolcmd}" == "nanowhim" ]] ; then
+        # nanowhim does not use submit
+        submit=""
+        setup_base_dir "nanowhim"
+        nanowhim="${nanowhim_base}/${nanowhim_version}/bin/tclkit"
+        setup_whimrc
+        toolcmd="${nanowhim}"
+        toolargs="${nanowhim_base}/${nanowhim_version}/src/nanoWhim.kit -file ${WHIMRC} ${toolargs}"
+        # when nanowhim runs, we don't need a window manager
+        wm=""
+    else
+        # otherwise, if submit exists, do a local submit
+        if [[ "${use_submit}" == "true" ]] ; then
+            submit="${submit} --local --noHeartbeat --metrics"
+        else
+            # not using submit
+            echoerr "submit disabled: not using submit to launch this job."
+            submit=""
+        fi
+    fi
+
+    echoerr "toolcmd = ${toolcmd}"
+    echoerr "toolargs = ${toolargs}"
+    echoerr "submit = ${submit}"
+}
+
+########################################################################
+#
+# get_resource_info ()
+#
+# Sets variables resource_tool_title, resource_tool_version
+#
+# Extract tool information from the resources file if present.
+#
+# The resources file should be able to tell us the version of the
+# running tool. When version is "test", this usually means the tool is in
+# the contribtool state of "Installed" and was started from within
+# contribtool. When version is a numeric value, this usually means the
+# tool is in the contribtool state of "Published".
+#
+########################################################################
+
+get_resource_info ()
+{
+    local version
+    local caseMatch
+
+    if [[ "$SESSIONDIR" != "" ]] ; then
+        if [[ -r ${SESSIONDIR}/resources ]] ; then
+            version=$(grep '^version' ${SESSIONDIR}/resources | cut -d' ' -f 2)
+            resource_tool_title=$(grep '^application_name' ${SESSIONDIR}/resources | cut -d' ' -f 2-)
+            caseMatch=$(shopt -p nocasematch)
+            shopt -s nocasematch
+            case $version in
+                test )
+                       resource_tool_version=dev
+                       ;;
+                   * )
+                       resource_tool_version=$version
+                       ;;
+            esac
+            $caseMatch
+        fi
+    fi
+}
+
+
+########################################################################
+#
+# setup_tooldir ()
+#
+# Set and export TOOLDIR variable.
+#
+# This function expects the variables ${toolname} and TOOL_VERSION to have
+# been set prior to entry. This function painfully tries all sorts
+# of combinations to correctly figure out where the tool.xml is
+# located.
+#
+# Paths checked:
+#
+# /apps/${toolname}/${TOOL_VERSION}/rappture/tool.xml
+# ${TOOLDIR}/rappture/tool.xml
+# /apps/${toolname}/${TOOLDIR}/rappture/tool.xml
+#
+# TOOLDIR is the directory of the tool to be run, something like
+# /apps/<toolname>/<version>
+#
+########################################################################
+
+setup_tooldir ()
+{
+    local newtooldir=""
+    local msg=""
+
+    if [[ "${TOOLDIR}" == "" ]] ; then
+        # Scenario #1
+        #    -T flag was not provided and setup_installdir could not set TOOLDIR
+        #    ${TOOLDIR} == ""
+        #    continue looking for TOOLDIR based on ${toolname}
+
+        if [[ "${toolname}" != "" ]] ; then
+            if   [[ -h /apps/${toolname}/current ]] ; then
+                newtooldir=$(readlink -f /apps/${toolname}/current)
+            elif [[ -d /apps/${toolname}/current ]] ; then
+                newtooldir=/apps/${toolname}/current
+            fi
+        fi
+
+        # last guess to set a reasonable tooldir
+        # is to use the present working directory
+        if [[ "${newtooldir}" == "" ]] ; then
+            newtooldir=$(pwd)
+        fi
+
+    else
+        # Scenario #2
+        #    -T flag was not provided, but setup_installdir found tooldir
+        #    TOOLDIR="somedirectory"
+        #    this is the trivial case because if setup_installdir set TOOLDIR,
+        #    it should already exist.
+        #
+        # Scenario #3
+        #    -T flag was provided
+        #    TOOLDIR="somedirectory"
+        #    this is the case where the user provided a TOOLDIR.
+        #    check if directory exists, if not echo "bad directory"; exit 1
+
+        if [[ -d ${TOOLDIR} ]] ; then
+            newtooldir=$(readlink -f ${TOOLDIR})
+        else
+            if [[ "${toolname}" != "" ]] ; then
+                if [[ -d /apps/${toolname}/${TOOLDIR} ]] ; then
+                    # if the -t option is given, allow user to say
+                    # -T r43
+                    newtooldir="/apps/${toolname}/${TOOLDIR}"
+                fi
+            else
+                if [[ -d /apps/${TOOLDIR} ]] ; then
+                    # allow users to say
+                    # -T toolname/r43
+                    newtooldir="/apps/${TOOLDIR}"
+                fi
+            fi
+        fi
+
+        if [[ ! -d ${newtooldir} ]] ; then
+            msg="while checking tool: ${TOOLDIR} is not a directory"
+            echoerr ${msg}
+            xmessage -center ${msg}
+            exit 1
+        fi
+    fi
+
+    TOOLDIR=${newtooldir}
+
+    export TOOLDIR
+}
+
+########################################################################
+#
+# setup_toolxml ()
+#
+# setup TOOLXML environment variable for rappture configuration
+#
+# TOOLXML is the full path to the tool.xml to be used while launching
+# the program.
+#
+########################################################################
+
+setup_toolxml ()
+{
+    local msg=""
+
+    # for rappture tools, we look for tool.xml
+    # use ${TOOLDIR} to find tool.xml
+    if [[ -e ${TOOLDIR}/rappture/tool.xml ]] ; then
+        TOOLXML="${TOOLDIR}/rappture/tool.xml"
+    elif [[ -e  ${TOOLDIR}/tool.xml ]] ; then
+        TOOLXML="${TOOLDIR}/tool.xml"
+    else
+        msg="Unable to find tool.xml file. It should be located at \"${TOOLDIR}/rappture/tool.xml\""
+        echoerr ${msg}
+        xmessage -center ${msg}
+        exit 1
+    fi
+
+    export TOOLXML
+}
+
+########################################################################
+#
+# setup_whimrc ()
+#
+# setup WHIMRC environment variable for nanowhim configuration
+#
+########################################################################
+
+setup_whimrc ()
+{
+    local msg=""
+
+    # for nanowhim tools, we look for nanowhimrc
+    # use ${TOOLDIR} to find nanowhimrc
+    if   [[ -e ${TOOLDIR}/middleware/nanowhimrc ]] ; then
+        WHIMRC="${TOOLDIR}/middleware/nanowhimrc"
+    else
+        msg="Unable to find nanowhimrc file. It should be located at \"${TOOLDIR}/middleware/nanowhimrc\""
+        echoerr ${msg}
+        xmessage -center ${msg}
+        exit 1
+    fi
+
+    export WHIMRC
+}
+
+########################################################################
+#
+# find_application_revision ()
+#
+# setup SUBMIT_APPLICATION_REVISION environment variable for
+# usage metrics.
+#
+########################################################################
+
+find_application_revision ()
+{
+    local revisionPath=""
+    local revisionDir=""
+    local applicationPath=""
+    local applicationDir=""
+    local toolXMLDir=""
+    local svnURL=""
+    local toolrevision=""
+
+    SUBMIT_APPLICATION_REVISION=""
+    if   [ -n "${TOOLXML}" ] ; then
+       TOOLXMLPATH=$(readlink -f ${TOOLXML})
+       if   [ ${TOOLXMLPATH:0:5} = "/apps" -o ${TOOLXMLPATH:0:10} = "/auto/apps" ] ; then
+          revisionPath=${TOOLXMLPATH%%/rappture*}
+          revisionDir=$(basename ${revisionPath})
+          applicationPath=$(dirname ${revisionPath})
+          applicationDir=$(basename ${applicationPath})
+          SUBMIT_APPLICATION_REVISION=${applicationDir}_${revisionDir}
+          if [ ${TOOLXMLPATH} != "/apps/${applicationDir}/${revisionDir}/rappture/tool.xml" ] ; then
+             toolXMLDir=$(dirname ${TOOLXMLPATH})
+             revisionPath=$(basename ${toolXMLDir})
+             revisionDir=$(basename ${revisionPath})
+             SUBMIT_APPLICATION_REVISION="${SUBMIT_APPLICATION_REVISION}:${revisionDir}"
+          fi
+       elif [ ${TOOLXMLPATH:0:5} = "/home" -o ${TOOLXMLPATH:0:10} = "/auto/home" ] ; then
+          svnURL=$(svn info ${TOOLXMLPATH} 2> /dev/null | grep 'URL:')
+          if [ -n "${svnURL}" ] ; then
+             applicationPath=${svnURL%%/svn*}
+             applicationDir=${applicationPath##*/}
+             SUBMIT_APPLICATION_REVISION=${applicationDir}_HOME
+          else
+             revisionPath=${TOOLXMLPATH%%/rappture*}
+             if   [ ${revisionPath} != ${TOOLXMLPATH} ] ; then
+                revisionDir=$(basename ${revisionPath})
+                SUBMIT_APPLICATION_REVISION=${revisionDir}_DEV
+             elif [ -n "${toolname}" -a -n "${TOOL_VERSION}" ] ; then
+                SUBMIT_APPLICATION_REVISION=${toolname}_${TOOL_VERSION}
+             fi
+          fi
+       fi
+    elif [ -n "${TOOLDIR}" ] ; then
+       TOOLDIRPATH=$(readlink -f ${TOOLDIR})
+       if   [ ${TOOLDIRPATH:0:5} = "/apps" -o ${TOOLDIRPATH:0:10} = "/auto/apps" ] ; then
+          toolrevision=${TOOLDIRPATH##*/apps/}
+          applicationDir=$(dirname ${toolrevision})
+          revisionPath=${toolrevision#*/}
+          revisionDir=${revisionPath%%/*}
+          SUBMIT_APPLICATION_REVISION=${applicationDir}_${revisionDir}
+       elif [ ${TOOLDIRPATH:0:5} = "/home" -o ${TOOLDIRPATH:0:10} = "/auto/home" ] ; then
+          svnURL=$(svn info ${TOOLDIRPATH} 2> /dev/null | grep 'URL:')
+          if [ -n "${svnURL}" ] ; then
+             applicationPath=${svnURL%%/svn*}
+             applicationDir=${applicationPath##*/}
+             SUBMIT_APPLICATION_REVISION=${applicationDir}_HOME
+          else
+             revisionDir=$(basename ${TOOLDIRPATH})
+             SUBMIT_APPLICATION_REVISION=${revisionDir}_DEV
+          fi
+       fi
+    fi
+    export SUBMIT_APPLICATION_REVISION
+}
+
+
+########################################################################
+#
+# substitute_command_templates(template)
+#
+# substitute templates like '@tool' in command strings.
+#
+# converts:
+# '@tool' -> ${TOOLDIR}
+#
+# returns a string without template placeholders.
+#
+########################################################################
+
+substitute_command_templates ()
+{
+
+    local template=$1
+    local result=""
+
+    result=$(echo ${template} | sed -e "s;@tool;${TOOLDIR};g")
+
+    echo ${result}
+}
+
+
+########################################################################
+#
+# substitute_env_variable_templates(template)
+#
+# substitute templates like '@tool' and '${VERSION}' in environment
+# variable strings.
+#
+# converts:
+# '@tool' -> ${TOOLDIR}
+# '${VERSION}' -> ${TOOL_VERSION}
+#
+# returns a string without template placeholders.
+#
+########################################################################
+
+substitute_env_variable_templates ()
+{
+
+    local template=$1
+    local result=""
+
+    result=$(echo ${template} |
+                sed -e "s;@tool;${TOOLDIR};g" \
+                    -e "s/\${VERSION}/${TOOL_VERSION}/")
+
+    echo ${result}
+}
+
+
+########################################################################
+#
+# start_bg_commands ()
+#
+# run the setup and background commands prior to starting the rappture
+# program. This function starts up the about pages and runs the
+# background commands set in the -c option.
+#
+########################################################################
+
+start_bg_commands ()
+{
+    export RAPPTURE_DEBUG=1
+    export FILEXFER_DEBUG=1
+    export RAPPTURE_POSTERN=lumous
+
+    local cmd
+    local aboutFile
+
+    # check for -a about files
+    if [[ "${aboutFiles}" != "" ]] ; then
+      cmd=""
+      if [[ ! -x ${RAPPTURE_PATH}/bin/about} ]] ; then
+        echoerr "Not background exec'ing about files"
+        echoerr "Bad path \"${RAPPTURE_PATH}/bin/about\": file not executable"
+      else
+        for aboutFile in ${aboutFiles} ; do
+          aboutFile=$(substitute_command_templates "${aboutFile}")
+          cmd="${RAPPTURE_PATH}/bin/about ${aboutFile}"
+          echoerr "background exec'ing \"${cmd}\""
+          (sleep 2;eval ${cmd})&
+        done
+      fi
+    fi
+
+    # check for -c commands
+    if [[ "${commands[0]}" != "" ]] ; then
+      for cmd in "${commands[@]}" ; do
+        cmd=$(substitute_command_templates "${cmd}")
+        echoerr "background exec'ing \"${cmd}\""
+        eval ${cmd}&
+      done
+    fi
+}
+
+########################################################################
+#
+# start_window_manager ()
+#
+# start the pixelflip daemon to keep the vnc session active?
+# start a window manager.
+#
+########################################################################
+
+start_window_manager ()
+{
+    local pf
+    local caseMatch
+    local msg
+
+    # Start the 5-minute keepalive daemon.
+    for pf in ${pixelflip} ""; do
+        if [[ -x ${pf} ]] ; then
+            ${pf}
+            break
+        fi
+    done
+    if [[ "${pf}" == "" ]] ; then
+        echoerr "No pixelflip executable found in: \"${pixelflip}\""
+    fi
+
+    caseMatch=$(shopt -p nocasematch)
+    shopt -s nocasematch
+    case ${wm} in
+        icewm )
+            if [[ `which icewm` == "" ]] ; then
+                msg="Unable to find the window manager \"icewm\""
+                echoerr ${msg}
+                xmessage -center ${msg}
+                exit 1
+            fi
+            if [[ ! -x ${icewm} ]] ; then
+                msg="Start script, \"${icewm}\" is not executable"
+                echoerr ${msg}
+                xmessage -center ${msg}
+                exit 1
+            fi
+            wm="${icewm} &"
+            ;;
+        captive )
+            if [[ `which icewm` == "" ]] ; then
+                msg="Unable to find the window manager \"icewm\""
+                echoerr ${msg}
+                xmessage -center ${msg}
+                exit 1
+            fi
+            if [[ ! -x ${icewm_captive} ]] ; then
+                msg="Captive start script, \"${icewm_captive}\" is not executable"
+                echoerr ${msg}
+                xmessage -center ${msg}
+                exit 1
+            fi
+            wm="${icewm_captive} &"
+            ;;
+        ratpoison )
+            if [[ `which ratpoison` == "" ]] ; then
+                msg="Unable to find the window manager \"ratpoison\""
+                echoerr ${msg}
+                xmessage -center ${msg}
+                exit 1
+            fi
+            if [[ ! -x ${ratpoison} ]] ; then
+                msg="Ratpoison start script, \"${ratpoison}\" is not executable"
+                echoerr ${msg}
+                xmessage -center ${msg}
+                exit 1
+            fi
+            wm="${ratpoison} &"
+            ;;
+    esac
+    ${caseMatch}
+
+    # check for -f full screen
+    if [[ "${fs}" == "" ]] ; then
+        echoerr "setting FULLSCREEN=yes"
+        export FULLSCREEN=yes
+    else
+        echoerr "disabling FULLSCREEN=yes"
+    fi
+
+    # Start the window manager.
+    echoerr "setting up windowmanager: ${wm}"
+    eval ${wm}
+}
+
+########################################################################
+#
+# setup_workingdir ()
+#
+# Change to the provided working directory.
+# Display error messages if there were troubles changing the directory.
+#
+########################################################################
+
+setup_workingdir ()
+{
+    local msg=""
+
+    if [ -d ${1} ] ; then
+        cd ${1}
+        if [ $? -ne 0 ] ; then
+            msg="Could not change directory to \"${1}\""
+            echoerr ${msg}
+            xmessage -center ${msg}
+            exit 1
+        fi
+    else
+        msg="Working directory \"${1}\" does not exist"
+        echoerr ${msg}
+        xmessage -center ${msg}
+        exit 1
+    fi
+}
+
+########################################################################
+#
+# setup_path_envvar ()
+#
+# Add standard stuff to the PATH environment variable
+# Currently we add the tool's bin dir
+#
+########################################################################
+
+setup_path_envvar ()
+{
+    # add the tool's bin directory to the path
+    if [[ -d ${TOOLDIR}/bin ]] ; then
+       PATH=${TOOLDIR}/bin:${PATH}
+    fi
+
+    export PATH
+}
+
+########################################################################
+#
+# setup_installdir ()
+#
+# figure out where we are installed
+# try to set TOOLDIR and toolname the best we can in case the user
+# doesn't give us this information.
+#
+# sets the following variables:
+#   toolname
+#   TOOL_VERSION
+#   TOOLDIR
+#
+########################################################################
+
+setup_installdir ()
+{
+    local caller
+    local dir
+    local base
+
+    toolname=""
+    TOOL_VERSION=""
+    TOOLDIR=""
+
+    # this won't work on a mac because they have fake
+    # versions of the readlink and realpath functions
+    caller=$(ps -ocommand= -p $PPID | awk -F' ' '{print $2}' | awk '{print $1}')
+
+    if [[ "${caller}" != "" ]] ; then
+        caller=$(readlink -f ${caller})
+        dir=$(dirname ${caller})
+        base=$(basename ${caller})
+        if [[ "${base}" == "invoke" ]] ; then
+            # we were started by an invoke script
+            # look for a familiar directory structure
+            # to help with guessing toolname and TOOLDIR
+            base=$(basename ${dir})
+            if [[ "${base}" == "middleware" ]] ; then
+                # caller's path probably looks something like one of these:
+                # /apps/<toolname>/<version>/middleware/invoke
+                # /apps/<toolname>/middleware/invoke
+                # /home/<hub>/<user>/<toolname>/middleware/invoke
+                # in the first case, <version> could look like:
+                # "r1234" or "20081103"
+                dir=$(dirname ${dir})
+                base=$(basename ${dir})
+                TOOLDIR=${dir}
+                if     [[ "${base}" =~ (^r[0-9]+) ]] \
+                    || [[ "${base}" =~ (^[0-9]{8}) ]] \
+                    || [[ "${base}" == "current" ]] \
+                    || [[ "${base}" == "dev" ]] ; then
+                    # path probably looks something like this:
+                    # /apps/<toolname>/<version>/middleware/invoke
+                    TOOL_VERSION=${base}
+                    toolname=$(basename $(dirname ${dir}))
+                elif [[ "${base}" =~ [a-zA-Z0-9]+ ]] ; then
+                    # path probably looks something like one of these:
+                    # /apps/<toolname>/middleware/invoke
+                    # /home/<hub>/<user>/<toolname>/middleware/invoke
+                    TOOL_VERSION=""
+                    toolname=${base}
+                fi
+            fi
+        else
+            # this covers a special case for aqme and 1dhetero on nanohub.org
+            # where a user starts 1dhetero from a script inside of
+            # aqme's bin directory.
+            base=$(basename ${dir})
+            if [[ "${base}" == "bin" ]] ; then
+                # caller's path probably looks something like one of these:
+                # /apps/<toolname>/<version>/bin/program
+                # /home/<hub>/<user>/<toolname>/bin/program
+                # in the first case, <version> could look like:
+                # "r1234" or "20081103"
+                dir=$(dirname ${dir})
+                base=$(basename ${dir})
+                if [[ "${base}" =~ (^r[0-9]+) ]] || \
+                   [[ "${base}" =~ (^[0-9]{8}) ]] ; then
+                    # path probably looks something like this:
+                    # /apps/<toolname>/<version>/bin/program
+                    TOOLDIR=${dir}
+                    TOOL_VERSION=${base}
+                    toolname=$(basename $(dirname ${dir}))
+                fi
+            fi
+        fi
+    # else
+        # since the caller is blank, theres a good chance the user
+        # is calling this script directly from the command line.
+        # wait until we evaluate the command line arguments
+        # and finish setting TOOLDIR in the function setup_tooldir
+    fi
+
+    echoerr "------------------------------------------------------"
+    echoerr "guessed variable assignments before reading arguments:"
+    echoerr "script = $(readlink -f ${0})"
+    echoerr "caller = ${caller}"
+    echoerr "toolname = ${toolname}"
+    echoerr "TOOL_VERSION = ${TOOL_VERSION}"
+    echoerr "TOOLDIR = ${TOOLDIR}"
+    echoerr "------------------------------------------------------"
+}
+
+
+########################################################################
+#
+# check_rappture_tools (rapptureBaseDir)
+#
+# check if the provided directory has a bin directory with rappture tools
+#
+# returns 0 on success and 1 otherwise.
+#
+########################################################################
+
+check_rappture_tools ()
+{
+    local rappture_base_dir=$1
+    local result=0
+
+    if [[ ! -x "${rappture_base_dir}/bin/rappture" ]] ; then
+        # echoerr "invalid path for 'rappture': ${rappture_base_dir}/bin/rappture"
+        result=1
+    fi
+
+    if [[ ! -x "${rappture_base_dir}/bin/simsim" ]] ; then
+        # echoerr "invalid path for 'simsim': ${rappture_base_dir}/bin/simsim"
+        result=1
+    fi
+
+    if [[ ! -x "${rappture_base_dir}/bin/about" ]] ; then
+        # echoerr "invalid path for 'about': ${rappture_base_dir}/bin/about"
+        result=1
+    fi
+
+    return ${result}
+}
+
+
+########################################################################
+#
+# setup_rappture_paths ()
+#
+# figure out where rappture is installed
+#
+# internally set RAPPTURE_PATH
+# RAPPTURE_PATH points to the base of the rappture installation
+# we assume there is a bin directory under RAPPTURE_PATH,
+# where executables like 'rappture', 'simsim', and 'about' are stored.
+#
+########################################################################
+
+setup_rappture_paths ()
+{
+    local rexe
+    local t
+
+    # check if we should look for rappture executables.
+    if [[ "${rappture_version}" == "none" ]] ; then
+        RAPPTURE_PATH=""
+        echoerr "rappture_version set to none: disabling search for rappture executables.\""
+        echoerr "rappture executables (rappture, simsim, about) will be disabled.\""
+        return 0
+    fi
+
+    # try to find rappture
+    #
+    # check if rappture is already in the path
+
+    rexe=`which rappture`
+
+    # if we find /apps/bin/rappture, ignore it because it
+    # is usually a shell script that eventually calls rappture.
+    # we are looking for the rappture installation.
+    if [[ "${rexe}" == "/apps/bin/rappture" ]] ; then
+        rexe=""
+    fi
+
+    if [[ "${rexe}" == "" ]] ; then
+        # rappture is not in the path
+        # try to find an installation by enabling
+        # the rappture environment through 'use'
+        echoerr "grabbing RAPPTURE_PATH from \"use -e -r rappture\""
+        RAPPTURE_PATH=$(. /etc/environ.sh; use -e -r rappture; echo $RAPPTURE_PATH)
+    else
+        # rappture is in the path,
+        # set RAPPTURE_PATH based on where the executable lives
+        RAPPTURE_PATH=$(dirname $(dirname ${rexe}))
+    fi
+
+    # check if we have a reasonable RAPPTURE_PATH
+    if ! check_rappture_tools ${RAPPTURE_PATH} ; then
+        msg="could not find a rappture installation: RAPPTURE_PATH=${RAPPTURE_PATH}, try adjusting the PATH environment variable with the -e flag"
+        echoerr ${msg}
+        xmessage -center ${msg}
+        exit 1
+    fi
+
+    # if the user provided a specific rappture version
+    # by using the -r flag, try to honor it
+
+    if [[ "${rappture_version}" != "system" ]] ; then
+        t=$(dirname ${RAPPTURE_PATH})/${rappture_version}
+        if ! check_rappture_tools ${t} ; then
+            msg="failed to find rappture executables in specific rappture version: ${t}"
+            echoerr ${msg}
+            xmessage -center ${msg}
+            exit 1
+        else
+            echoerr "switching to rappture version: ${t}"
+            RAPPTURE_PATH=${t}
+        fi
+    fi
+
+
+    # paths for rappture tools are based off of RAPPTURE_PATH
+    echoerr "RAPPTURE_PATH = ${RAPPTURE_PATH}"
+}
+
+
+# Start here
+
+aboutFiles=""
+let nCommands=0
+let nToolCommands=0
+wm="ratpoison"
+fs=""
+runsimsim=""
+queue=""
+loadfiles=""
+toolname=""
+toolcmd=""
+toolargs=""
+goto_workingdir="false"
+workingdirectory=""
+resource_tool_title=""
+resource_tool_version=""
+rappture_version="system"
+nanowhim_version="current"
+use_submit="true"
+options=":C:d:n:r:t:T:v:u:e:p:q:c:a:A:w:l:fsS"
+
+
+check_dependencies
+
+get_resource_info
+
+setup_installdir
+
+
+# parse the command line flags and options
+# separate flags from options
+
+let nNamedArgs=0
+let nUnnamedArgs=0
+while (( "$#" ))
+do
+   case $1 in
+      -f|-F|-s|-S )
+           namedArgs[$nNamedArgs]=$1
+           let nNamedArgs++
+           shift
+           ;;
+      -* )
+           namedArgs[$nNamedArgs]=$1
+           let nNamedArgs++
+           shift
+           namedArgs[$nNamedArgs]=$1
+           let nNamedArgs++
+           shift
+           ;;
+       * )
+           unnamedArgs[$nUnnamedArgs]=$1
+           let nUnnamedArgs++
+           shift
+           ;;
+   esac
+done
+
+while getopts "${options}" Option "${namedArgs[@]}"
+do
+   case $Option in
+      C ) toolcmds[$nToolCommands]=$OPTARG;let nToolCommands++;;
+      d ) workingdirectory=$OPTARG; goto_workingdir="true";;
+      n ) nanowhim_version=$OPTARG;;
+      r ) rappture_version=$OPTARG;;
+      t ) toolname=$OPTARG;;
+      T ) TOOLDIR=$OPTARG;;
+      q ) queue=$OPTARG;;
+      c ) commands[$nCommands]=$OPTARG;let nCommands++;;
+      a ) aboutFiles="$aboutFiles $OPTARG";;
+      A ) toolargs="$OPTARG";;
+      w ) wm=$OPTARG;;
+      l ) loadfiles="-load $OPTARG";;
+      f ) fs="no";;
+      s ) toolcmds[$nToolCommands]="simsim";let nToolCommands++;;
+      S ) use_submit="false"
+   esac
+done
+
+# find and export the TOOLDIR environment variable
+setup_tooldir
+
+#
+# Finish parsing the arument list
+# Two passes through argument list allows arbitrary order
+# Reset argument pointer to the begining
+#
+OPTIND=1
+while getopts "${options}" Option "${namedArgs[@]}"
+do
+   case $Option in
+      e ) $(substitute_env_variable_templates "export $OPTARG");;
+      p ) $(substitute_env_variable_templates "export PATH=$OPTARG:$PATH");;
+      u ) use -e -r $OPTARG;;
+   esac
+done
+
+# figure out where rappture and related tools are installed.
+setup_rappture_paths
+
+# look through the -C options and populate ${toolcmd}
+parse_tool_commands
+
+# find the application revision for submit metrics
+find_application_revision
+
+# Add standard stuff to the path,
+# like the tool's bin directory
+setup_path_envvar
+
+#
+# If there is no tty, this is not an interactive session.
+# Start a window manager.  Make the app run full screen.
+# Change dirs to the SESSIONDIR
+#
+tty -s || {
+    start_window_manager
+    if [[ ${SESSIONDIR} == "" ]] ; then
+        msg="SESSIONDIR environment variable not set"
+        echoerr ${msg}
+        exit 1
+    fi
+    setup_workingdir ${SESSIONDIR}
+}
+
+# If the user specified an alternative working directory,
+# Change dirs to the working directory.
+if [[ ${goto_workingdir} == "true" ]] ; then
+    setup_workingdir ${workingdirectory}
+fi
+
+#
+# run the application...
+#
+
+start_bg_commands
+
+echoerr "------------------------------------------------------"
+echoerr "final variable assignments before execution:"
+echoerr "toolname = ${toolname}"
+echoerr "TOOL_VERSION = ${TOOL_VERSION}"
+echoerr "TOOLDIR = ${TOOLDIR}"
+echoerr "resource_tool_title = $resource_tool_title"
+echoerr "resource_tool_version = $resource_tool_version"
+echoerr "------------------------------------------------------"
+
+export PROGRAM=$(substitute_command_templates "${toolcmd}")
+toolargs=$(substitute_command_templates "${toolargs}")
+
+# the "%% *" trims everything after the first space from
+# the variable $PROGRAM. this value is then sent to the
+# which command.
+
+if [[ `which ${PROGRAM%% *}` ]] || [[ -x ${PROGRAM%% *} ]] ; then
+   echoerr "exec'ing = \"${submit} ${PROGRAM} ${toolargs} ${unnamedArgs[@]}\""
+   eval ${submit} ${PROGRAM} ${toolargs} "${unnamedArgs[@]}"
+else
+   echoerr "tried to exec \"${PROGRAM} ${toolargs} ${unnamedArgs[@]}\""
+   msg="program named \"${PROGRAM%% *}\" does not appear to exist"
+   echoerr ${msg}
+   xmessage -center ${msg}
+   exit 1
+fi
+
+exit $?
