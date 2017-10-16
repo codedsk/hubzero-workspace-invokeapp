@@ -1099,7 +1099,6 @@ class TestContainerInvokeapp(object):
             + 'expected "%s"\nreceived "%s"' % (expected_out,r.toolout)
 
 
-    @pytest.mark.broken
     def test_fullscreen_2(self):
         """launching invoke_app without a -f flag to
            set the FULLSCREEN environment variable to "yes",
